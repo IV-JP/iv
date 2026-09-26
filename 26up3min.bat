@@ -1,5 +1,5 @@
 @echo off
-title Temp Cleanup, System Report, Power Config, Security Updates Only
+title Temp Cleanup, System Report, Power Config, Native Windows Update
 
 :: Check for Administrator privileges
 net session >nul 2>&1
@@ -17,7 +17,6 @@ set "LOCAL_DIR=%USERPROFILE%\Desktop\System Info"
 set "FILE_NAME=%COMPUTERNAME%.txt"
 set "LOCAL_PATH=%LOCAL_DIR%\%FILE_NAME%"
 
-:: Create local directory if it doesn't exist
 if not exist "%LOCAL_DIR%" mkdir "%LOCAL_DIR%"
 
 echo Cleaning up Temporary Files...
@@ -28,8 +27,6 @@ echo Temp files cleared successfully.
 
 echo.
 echo Generating system report for %COMPUTERNAME%...
-
-:: Start writing to the report file
 echo ======================================== > "%LOCAL_PATH%"
 echo DEVICE NAME: %COMPUTERNAME% >> "%LOCAL_PATH%"
 echo DATE GENERATED: %date% %time% >> "%LOCAL_PATH%"
@@ -74,12 +71,6 @@ echo. >> "%LOCAL_PATH%"
 echo --- INSTALLED SECURITY PATCHES (LAST AND CURRENT MONTH ONLY) --- >> "%LOCAL_PATH%"
 powershell -NoProfile -Command "$start=(Get-Date).AddMonths(-1); $cutoff=Get-Date -Year $start.Year -Month $start.Month -Day 1; Get-HotFix | Where-Object { $_.Description -match 'Security' -and $_.InstalledOn } | Where-Object { [datetime]$_.InstalledOn -ge $cutoff } | Select-Object HotFixID, InstalledOn, Description | Format-Table -AutoSize" >> "%LOCAL_PATH%"
 
-echo. >> "%LOCAL_PATH%"
-echo --- AVAILABLE PENDING SECURITY PATCHES (SIZE) --- >> "%LOCAL_PATH%"
-echo Checking Microsoft servers for pending updates (this may take a minute)...
-:: Scans for pending security updates on Windows 10/11 and calculates the total download size in MB and GB
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'SilentlyContinue'; if(-not (Get-PackageProvider -Name NuGet)){Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force}; if(-not (Get-Module -ListAvailable -Name PSWindowsUpdate)){Install-Module PSWindowsUpdate -Force}; Import-Module PSWindowsUpdate; $updates = Get-WindowsUpdate -Category 'Security Updates'; if ($updates) { $updates | Select-Object KB, @{N='Size(MB)';E={[math]::Round($_.Size / 1MB, 2)}}, Title | Format-Table -AutoSize; $total = ($updates | Measure-Object -Property Size -Sum).Sum; Write-Output \"`nTotal Pending Download Size: $([math]::Round($total / 1MB, 2)) MB / $([math]::Round($total / 1GB, 2)) GB\" } else { Write-Output 'No pending security updates available.' }" >> "%LOCAL_PATH%"
-
 echo.
 echo Report successfully saved locally to: %LOCAL_PATH%
 
@@ -91,10 +82,22 @@ powercfg -change -monitor-timeout-dc 3
 powercfg -change -standby-timeout-dc 3
 
 echo.
-echo Downloading and Installing ONLY Security Patches...
-:: The PSWindowsUpdate module is already loaded from the size check step, so this will proceed directly to installation
-powershell.exe -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'SilentlyContinue'; Import-Module PSWindowsUpdate; Get-WindowsUpdate -Category 'Security Updates' -Install -AcceptAll -IgnoreReboot"
+echo Resetting Windows Update Cache to fix size reporting errors...
+net stop wuauserv >nul 2>&1
+net stop bits >nul 2>&1
+del /q /f /s "C:\Windows\SoftwareDistribution\Download\*" >nul 2>&1
+net start wuauserv >nul 2>&1
+net start bits >nul 2>&1
 
 echo.
+echo Triggering Native Windows Update Engine...
+:: Starts the built-in Windows Update scanner and installer in the background
+UsoClient StartScan
+timeout /t 5 /nobreak >nul
+UsoClient StartInstall
+
+echo.
+echo Updates are now downloading and installing natively in the background.
+echo You can check the progress in Settings -^> Windows Update.
 echo All IT operations complete! 
 pause
