@@ -1,5 +1,5 @@
 @echo off
-title Temp Cleanup, System Report, Power Config, Native Windows Update
+title Temp Cleanup, System Report, Power Config, Specific KB Updates
 
 :: Check for Administrator privileges
 net session >nul 2>&1
@@ -17,6 +17,7 @@ set "LOCAL_DIR=%USERPROFILE%\Desktop\System Info"
 set "FILE_NAME=%COMPUTERNAME%.txt"
 set "LOCAL_PATH=%LOCAL_DIR%\%FILE_NAME%"
 
+:: Create local directory if it doesn't exist
 if not exist "%LOCAL_DIR%" mkdir "%LOCAL_DIR%"
 
 echo Cleaning up Temporary Files...
@@ -27,6 +28,8 @@ echo Temp files cleared successfully.
 
 echo.
 echo Generating system report for %COMPUTERNAME%...
+
+:: Start writing to the report file
 echo ======================================== > "%LOCAL_PATH%"
 echo DEVICE NAME: %COMPUTERNAME% >> "%LOCAL_PATH%"
 echo DATE GENERATED: %date% %time% >> "%LOCAL_PATH%"
@@ -82,22 +85,10 @@ powercfg -change -monitor-timeout-dc 3
 powercfg -change -standby-timeout-dc 3
 
 echo.
-echo Resetting Windows Update Cache to fix size reporting errors...
-net stop wuauserv >nul 2>&1
-net stop bits >nul 2>&1
-del /q /f /s "C:\Windows\SoftwareDistribution\Download\*" >nul 2>&1
-net start wuauserv >nul 2>&1
-net start bits >nul 2>&1
+echo Downloading and Installing KB5129195 and KB5124010 Only...
+:: Sets TLS 1.2, auto-trusts PSGallery, and forces "Yes" to all NuGet/Module installation prompts automatically
+powershell.exe -ExecutionPolicy Bypass -NoProfile -Command "$ErrorActionPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; if(-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)){Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Confirm:$false}; Set-PSRepository -Name PSGallery -InstallationPolicy Trusted; if(-not (Get-Module -ListAvailable -Name PSWindowsUpdate)){Install-Module PSWindowsUpdate -Force -Confirm:$false -AcceptLicense}; Import-Module PSWindowsUpdate; Get-WindowsUpdate -KBArticleID 'KB5129195','KB5124010' -Install -AcceptAll -IgnoreReboot"
 
 echo.
-echo Triggering Native Windows Update Engine...
-:: Starts the built-in Windows Update scanner and installer in the background
-UsoClient StartScan
-timeout /t 5 /nobreak >nul
-UsoClient StartInstall
-
-echo.
-echo Updates are now downloading and installing natively in the background.
-echo You can check the progress in Settings -^> Windows Update.
 echo All IT operations complete! 
 pause
