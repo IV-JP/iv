@@ -60,7 +60,6 @@ powershell -NoProfile -Command "Get-PhysicalDisk | Select-Object MediaType, @{N=
 
 echo. >> "%LOCAL_PATH%"
 echo --- MONITORS --- >> "%LOCAL_PATH%"
-:: Queries WmiMonitorID with a safe replacement for null characters
 powershell -NoProfile -Command "$m = Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorID -ErrorAction SilentlyContinue; if ($m) { $m | ForEach-Object { $man='Unknown'; if($_.ManufacturerName){$man=[System.Text.Encoding]::ASCII.GetString($_.ManufacturerName).Replace([char]0,[char]32).Trim()}; $mod='Unknown'; if($_.UserFriendlyName){$mod=[System.Text.Encoding]::ASCII.GetString($_.UserFriendlyName).Replace([char]0,[char]32).Trim()}; $ser='Unknown'; if($_.SerialNumberID){$ser=[System.Text.Encoding]::ASCII.GetString($_.SerialNumberID).Replace([char]0,[char]32).Trim()}; [PSCustomObject]@{Manufacturer=$man; Model=$mod; SerialNumber=$ser} } | Format-Table -AutoSize } else { 'No monitor data found.' }" >> "%LOCAL_PATH%"
 
 echo. >> "%LOCAL_PATH%"
@@ -72,8 +71,14 @@ echo --- MOUSE --- >> "%LOCAL_PATH%"
 powershell -NoProfile -Command "Get-CimInstance Win32_PointingDevice | Select-Object Description, Manufacturer, PNPDeviceID | Format-Table -AutoSize" >> "%LOCAL_PATH%"
 
 echo. >> "%LOCAL_PATH%"
-echo --- INSTALLED SECURITY PATCHES (HOTFIXES) --- >> "%LOCAL_PATH%"
-powershell -NoProfile -Command "Get-HotFix | Select-Object HotFixID, InstalledOn, Description | Format-Table -AutoSize" >> "%LOCAL_PATH%"
+echo --- INSTALLED SECURITY PATCHES (LAST AND CURRENT MONTH ONLY) --- >> "%LOCAL_PATH%"
+powershell -NoProfile -Command "$start=(Get-Date).AddMonths(-1); $cutoff=Get-Date -Year $start.Year -Month $start.Month -Day 1; Get-HotFix | Where-Object { $_.Description -match 'Security' -and $_.InstalledOn } | Where-Object { [datetime]$_.InstalledOn -ge $cutoff } | Select-Object HotFixID, InstalledOn, Description | Format-Table -AutoSize" >> "%LOCAL_PATH%"
+
+echo. >> "%LOCAL_PATH%"
+echo --- AVAILABLE PENDING SECURITY PATCHES (SIZE) --- >> "%LOCAL_PATH%"
+echo Checking Microsoft servers for pending updates (this may take a minute)...
+:: Scans for pending security updates on Windows 10/11 and calculates the total download size in MB and GB
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'SilentlyContinue'; if(-not (Get-PackageProvider -Name NuGet)){Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force}; if(-not (Get-Module -ListAvailable -Name PSWindowsUpdate)){Install-Module PSWindowsUpdate -Force}; Import-Module PSWindowsUpdate; $updates = Get-WindowsUpdate -Category 'Security Updates'; if ($updates) { $updates | Select-Object KB, @{N='Size(MB)';E={[math]::Round($_.Size / 1MB, 2)}}, Title | Format-Table -AutoSize; $total = ($updates | Measure-Object -Property Size -Sum).Sum; Write-Output \"`nTotal Pending Download Size: $([math]::Round($total / 1MB, 2)) MB / $([math]::Round($total / 1GB, 2)) GB\" } else { Write-Output 'No pending security updates available.' }" >> "%LOCAL_PATH%"
 
 echo.
 echo Report successfully saved locally to: %LOCAL_PATH%
@@ -86,9 +91,9 @@ powercfg -change -monitor-timeout-dc 3
 powercfg -change -standby-timeout-dc 3
 
 echo.
-echo Checking, Downloading, and Installing ONLY Security Patches...
-:: Setup module and strictly force installation of 'Security Updates' category only
-powershell.exe -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'SilentlyContinue'; if(-not (Get-PackageProvider -Name NuGet)){Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force}; if(-not (Get-Module -ListAvailable -Name PSWindowsUpdate)){Install-Module PSWindowsUpdate -Force}; Import-Module PSWindowsUpdate; Get-WindowsUpdate -Category 'Security Updates' -Install -AcceptAll -IgnoreReboot"
+echo Downloading and Installing ONLY Security Patches...
+:: The PSWindowsUpdate module is already loaded from the size check step, so this will proceed directly to installation
+powershell.exe -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'SilentlyContinue'; Import-Module PSWindowsUpdate; Get-WindowsUpdate -Category 'Security Updates' -Install -AcceptAll -IgnoreReboot"
 
 echo.
 echo All IT operations complete! 
