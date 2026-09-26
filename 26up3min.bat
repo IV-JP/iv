@@ -1,5 +1,16 @@
 @echo off
-title Temp Cleanup, System Report, Power Config, Windows Update
+title Temp Cleanup, System Report, Power Config, Security Updates Only
+
+:: Check for Administrator privileges
+net session >nul 2>&1
+if %errorlevel% neq 0 (
+    echo =====================================================
+    echo ERROR: Administrator privileges are required!
+    echo Please right-click this script and select "Run as administrator".
+    echo =====================================================
+    pause
+    exit /b
+)
 
 :: Define paths to create a folder on the Desktop and save the file
 set "LOCAL_DIR=%USERPROFILE%\Desktop\System Info"
@@ -75,9 +86,9 @@ powercfg -change -monitor-timeout-dc 3
 powercfg -change -standby-timeout-dc 3
 
 echo.
-echo Checking, Downloading, and Installing Windows Security Patches...
-:: Setup module and automatically force installation of 'Security Updates' only
-powershell.exe -ExecutionPolicy Bypass -Command "if(-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)){Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force}; if(-not (Get-Module -ListAvailable -Name PSWindowsUpdate)){Install-Module PSWindowsUpdate -Force}; Import-Module PSWindowsUpdate; Install-WindowsUpdate -Category 'Security Updates' -AcceptAll -ForceDownload -ForceInstall -IgnoreReboot"
+echo Checking, Downloading, and Installing ONLY Security Patches...
+:: Setup module and strictly force installation of 'Security Updates' category only
+powershell.exe -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'SilentlyContinue'; if(-not (Get-PackageProvider -Name NuGet)){Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force}; if(-not (Get-Module -ListAvailable -Name PSWindowsUpdate)){Install-Module PSWindowsUpdate -Force}; Import-Module PSWindowsUpdate; Get-WindowsUpdate -Category 'Security Updates' -Install -AcceptAll -IgnoreReboot"
 
 echo.
 echo All IT operations complete! 
